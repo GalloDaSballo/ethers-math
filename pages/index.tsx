@@ -1,32 +1,48 @@
-import { utils } from "ethers";
+import ethers, { BigNumber } from "ethers";
 import Head from "next/head";
-import { FormEvent, useState } from "react";
 import styles from "../styles/Home.module.css";
-import getTokenURI from "../utils/getTokenURI";
 
-// https://stackoverflow.com/questions/20169217/how-to-write-isnumber-in-javascript
-const isNumber = function isNumber(value) {
-  return typeof value === "number" && Number.isFinite(value);
+const ONE_REN_BTC = BigNumber.from("100000000");
+const BTC_USD = BigNumber.from("3691396868687");
+const ONE_ETH = BigNumber.from("1000000000000000000");
+
+const collateralDecimal = ONE_ETH; // 18 decimals
+const collateralPriceDecimal = 1; // 1 USD
+
+const minRatio = BigNumber.from("110");
+const ratioBuff = BigNumber.from("200");
+const ratioBuffMax = BigNumber.from("10000");
+
+const getLatestCollateralPrice = () => {
+  return BTC_USD.mul(collateralPriceDecimal).div(1e8); // Hardcode ratio for USD, hardcoded ratio for decimals
+};
+
+const collateralValue = (collateralAmt) => {
+  const collateralPrice = getLatestCollateralPrice();
+  return collateralAmt
+    .mul(collateralPrice)
+    .mul(ONE_ETH)
+    .div(collateralDecimal)
+    .div(collateralPriceDecimal); // debtToken in 1e18 decimal
+};
+
+const getBufferedMinRatio = (multiplier) => {
+  return minRatio.mul(multiplier).add(ratioBuff).div(100);
+};
+
+// if borrow is true (for addCollateralAndBorrow): return (maxDebt - currentDebt) if positive value, otherwise return 0
+// if borrow is false (for repayAndRedeemCollateral): return (currentDebt - maxDebt) if positive value, otherwise return 0
+const calculateDebtFor = (collateralAmt) => {
+  const maxDebt = collateralValue(collateralAmt)
+    .mul(ratioBuffMax)
+    .div(getBufferedMinRatio(ratioBuffMax));
+  return maxDebt;
 };
 
 const Home: React.FC = () => {
-  const [address, setAddress] = useState("");
-  const [tokenId, setTokenId] = useState("");
-  const [tokenUri, setTokenUri] = useState("");
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!utils.isAddress(address)) {
-      console.log("???");
-      return alert("Address is not valid");
-    }
-
-    if (!isNumber(Number(tokenId))) {
-      return alert("TokenID must be a number");
-    }
-    const res = await getTokenURI(address, tokenId);
-    setTokenUri(res);
-  };
+  const debt = calculateDebtFor(ONE_REN_BTC);
+  console.log("debt", debt.toString());
+  console.log(BTC_USD.div(debt).toString());
   return (
     <div className={styles.container}>
       <Head>
@@ -34,33 +50,7 @@ const Home: React.FC = () => {
         <link rel="icon" href="/favicon.ico" />
       </Head>
       <main>
-        <h1>Get ERC721 Metadata</h1>
-        <p>
-          Paste the Token Address and TokenID, we'll fetch the TokenURI for you
-        </p>
-        <form onSubmit={handleSubmit}>
-          <label htmlFor="Address">
-            Address
-            <input
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-            />
-          </label>
-          <label htmlFor="TokenId">
-            TokenID
-            <input
-              value={tokenId}
-              onChange={(e) => setTokenId(e.target.value)}
-            />
-          </label>
-          <button type="submit">Find out</button>
-        </form>
-        {tokenUri && (
-          <div>
-            <h3>Result:</h3>
-            <pre>{tokenUri}</pre>
-          </div>
-        )}
+        <h1>Ethers Math</h1>
       </main>
     </div>
   );
